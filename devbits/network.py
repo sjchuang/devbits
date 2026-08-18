@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import codecs
 import concurrent.futures
+import functools
 import ipaddress
+import locale
 import platform
 import re
 import socket
@@ -32,6 +35,48 @@ class Device:
     vendor: str | None = None
     is_self: bool = False
     is_gateway: bool = False
+
+
+@functools.lru_cache(maxsize=1)
+def _console_encoding() -> str:
+    """The encoding the OS command-line tools print in.
+
+    On Windows this is the console output code page (e.g. ``cp950`` on a
+    Traditional Chinese install), *not* UTF-8. Elsewhere the locale's preferred
+    encoding is right.
+    """
+    if platform.system().lower() == "windows":
+        try:
+            import ctypes
+
+            codepage = ctypes.windll.kernel32.GetConsoleOutputCP() or ctypes.windll.kernel32.GetOEMCP()
+            codecs.lookup(f"cp{codepage}")  # reject code pages Python can't handle
+            return f"cp{codepage}"
+        except Exception:
+            pass
+    try:
+        return codecs.lookup(locale.getpreferredencoding(False)).name
+    except Exception:
+        return "utf-8"
+
+
+def _run_text(cmd: list[str], timeout: float) -> tuple[int, str]:
+    """Run ``cmd`` and return ``(returncode, stdout)``, decoded defensively.
+
+    Deliberately *not* ``text=True``: that decodes with UTF-8 strictly, so on a
+    non-English Windows the UnicodeDecodeError is raised inside subprocess'
+    reader threads, which leaves ``stdout`` as ``None`` and produces a confusing
+    ``'NoneType' object has no attribute ...`` far from the real cause. Decoding
+    the bytes here with ``errors="replace"`` cannot fail, and everything we parse
+    out of these tools (IPs, MACs, ``TTL=``) is ASCII anyway.
+    """
+    proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    raw = proc.stdout
+    if raw is None:
+        return proc.returncode, ""
+    if isinstance(raw, str):  # a text-mode fake / caller override
+        return proc.returncode, raw
+    return proc.returncode, raw.decode(_console_encoding(), "replace")
 
 
 def local_ip() -> str:
@@ -69,7 +114,7 @@ def gateway_ip() -> str | None:
     system = platform.system().lower()
     try:
         if system == "windows":
-            out = subprocess.run(["route", "print", "0.0.0.0"], capture_output=True, text=True, timeout=5).stdout
+            out = _run_text(["route", "print", "0.0.0.0"], timeout=5)[1]
             for line in out.splitlines():
                 if line.strip().startswith("0.0.0.0"):
                     ips = _IP_RE.findall(line)
@@ -77,11 +122,11 @@ def gateway_ip() -> str | None:
                         return ips[2]  # destination, netmask, gateway
             return None
         if system == "darwin":
-            out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True, timeout=5).stdout
+            out = _run_text(["route", "-n", "get", "default"], timeout=5)[1]
             match = re.search(r"gateway:\s*(" + _IP_RE.pattern + ")", out)
             return match.group(1) if match else None
         # Linux and other Unixes
-        out = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=5).stdout
+        out = _run_text(["ip", "route"], timeout=5)[1]
         match = re.search(r"default via (" + _IP_RE.pattern + ")", out)
         return match.group(1) if match else None
     except Exception:
@@ -170,7 +215,7 @@ def arp_table() -> dict[str, str]:
 
     for command in commands:
         try:
-            out = subprocess.run(command, capture_output=True, text=True, timeout=10).stdout
+            out = _run_text(command, timeout=10)[1]
         except Exception:
             continue
         table: dict[str, str] = {}
@@ -193,15 +238,16 @@ def _ping(ip: str, timeout: float = 1.0) -> bool:
     else:
         cmd = ["ping", "-c", "1", "-W", str(max(1, int(round(timeout)))), ip]  # -W is seconds on Linux
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 2)
+        returncode, out = _run_text(cmd, timeout=timeout + 2)
     except Exception:
         return False
-    if result.returncode != 0:
+    if returncode != 0:
         return False
     if system == "windows":
         # Windows ping can exit 0 while printing "Destination host unreachable"
         # (a reply from the gateway, not the target). Require a real echo reply.
-        return "ttl=" in result.stdout.lower()
+        # "TTL=" is ASCII in every locale, so this survives localized output.
+        return "ttl=" in out.lower()
     return True
 
 

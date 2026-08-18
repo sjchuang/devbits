@@ -1,3 +1,3 @@
 """devbits: A lightweight CLI toolkit for daily development utilities."""
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"

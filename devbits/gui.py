@@ -1763,7 +1763,7 @@ def _has_audio(path: Path) -> bool:
         out = subprocess.run(
             [probe, "-v", "error", "-select_streams", "a",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, errors="replace", timeout=15,
         )
         return "audio" in out.stdout
     except (subprocess.SubprocessError, OSError):
@@ -2116,7 +2116,7 @@ class _Handler(BaseHTTPRequestHandler):
         global _export_progress
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1,
+            text=True, errors="replace", bufsize=1,
         )
         try:
             for line in proc.stdout:

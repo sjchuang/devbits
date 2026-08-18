@@ -70,6 +70,7 @@ def test_arp_table_windows_command(monkeypatch) -> None:
     calls = []
 
     class _Result:
+        returncode = 0
         stdout = "  192.168.0.1           aa-bb-cc-dd-ee-ff     dynamic"
 
     def fake_run(cmd, **kwargs):
@@ -95,6 +96,7 @@ def test_arp_table_linux_falls_back_to_ip_neigh(monkeypatch) -> None:
             raise FileNotFoundError("arp not installed")
 
         class _Result:
+            returncode = 0
             stdout = "192.168.0.1 dev eth0 lladdr aa:bb:cc:dd:ee:ff REACHABLE"
 
         return _Result()
@@ -104,6 +106,47 @@ def test_arp_table_linux_falls_back_to_ip_neigh(monkeypatch) -> None:
     table = net.arp_table()
     assert calls == [["arp", "-an"], ["ip", "neigh", "show"]]
     assert table == {"192.168.0.1": "aa:bb:cc:dd:ee:ff"}
+
+
+def test_subprocess_output_survives_non_utf8_locale(monkeypatch) -> None:
+    # A Traditional Chinese Windows prints cp950 bytes, which are not valid
+    # UTF-8. Decoding must not raise, and ping must still detect the reply.
+    import subprocess
+
+    import devbits.network as net
+
+    # "回覆自 192.168.50.138: 位元組=32 時間<1ms TTL=64" in cp950.
+    cp950 = (
+        "回覆自 192.168.50.138: 位元組=32 時間<1ms TTL=64".encode("cp950")
+    )
+
+    def fake_run(cmd, **kwargs):
+        assert not kwargs.get("text"), "text=True decodes as UTF-8 and crashes here"
+        return subprocess.CompletedProcess(cmd, 0, cp950, b"")
+
+    monkeypatch.setattr(net.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(net.subprocess, "run", fake_run)
+    net._console_encoding.cache_clear()
+    monkeypatch.setattr(net, "_console_encoding", lambda: "cp950")
+
+    assert net._ping("192.168.50.138") is True
+
+
+def test_ping_tolerates_undecodable_bytes(monkeypatch) -> None:
+    # Even if the code page guess is wrong, no byte sequence may raise.
+    import subprocess
+
+    import devbits.network as net
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, b"\xa4\xa8 TTL=64 \xff\xfe", b"")
+
+    monkeypatch.setattr(net.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(net.subprocess, "run", fake_run)
+    net._console_encoding.cache_clear()
+    monkeypatch.setattr(net, "_console_encoding", lambda: "utf-8")
+
+    assert net._ping("192.168.50.138") is True
 
 
 def test_private_mac_detection() -> None:
