@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import shutil
 import sys
@@ -33,6 +34,9 @@ _ANSI = {
     "signal": "\033[32m",
     "lock": "\033[33m",
     "dim": "\033[2m",
+    "segment": "\033[1;36m",
+    "warn": "\033[1;31m",
+    "note": "\033[2m",
     "reset": "\033[0m",
 }
 
@@ -491,6 +495,58 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Disable colored output (also honors NO_COLOR).")
     p.set_defaults(func=cmd_netscan)
 
+    # ── netsurvey ──────────────────────────────────────────────
+    p = sub.add_parser(
+        "netsurvey",
+        help="Map every network segment and address in use around you.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Survey the whole environment instead of a single subnet: list your own\n"
+            "interfaces and their ranges, every segment visible on the same wire, the\n"
+            "addresses in use in each, and the clashes between them.\n\n"
+            "Built for shared networks — a trade-show hall, an office, a co-working\n"
+            "space — where someone else's router hands out an overlapping range and\n"
+            "traffic quietly goes to the wrong place. Reports duplicate IPs, ranges\n"
+            "that overlap your own, links with no DHCP, and routers bridging two\n"
+            "segments.\n\n"
+            "The default pass is passive and takes a couple of seconds: it reads the\n"
+            "ARP / neighbour cache (which lists neighbours on *foreign* subnets too)\n"
+            "and asks for SSDP and mDNS answers. --sweep additionally ping-sweeps\n"
+            "your ranges and the discovered ones so each address list is complete.\n\n"
+            "Survey only networks you are entitled to; probing networks you don't\n"
+            "administer may violate policy or law.\n\n"
+            "Examples:\n"
+            "  devbits netsurvey                              # quick passive map\n"
+            "  devbits netsurvey --summary                     # segments only\n"
+            "  devbits netsurvey --sweep                       # also enumerate every host\n"
+            "  devbits netsurvey --include 192.168.1.0/24 --include 10.0.0.0/24\n"
+            "  devbits netsurvey --sweep --group-prefix 16 --timeout 0.4"
+        ),
+    )
+    p.add_argument("--sweep", action="store_true",
+                   help="Also ping-sweep your own and the discovered segments (slower, complete).")
+    p.add_argument("--include", metavar="CIDR", action="append", default=[],
+                   help="Extra range to sweep, e.g. 10.0.0.0/24. Repeatable.")
+    p.add_argument("--group-prefix", type=int, default=24, metavar="N",
+                   help="Prefix used to group addresses outside your own subnets. Default: 24")
+    p.add_argument("--timeout", type=float, default=0.6,
+                   help="Per-host ping timeout in seconds. Default: 0.6")
+    p.add_argument("--workers", type=int, default=128,
+                   help="Number of concurrent ping workers. Default: 128")
+    p.add_argument("--discover-timeout", type=float, default=2.0, metavar="SECONDS",
+                   help="How long to listen for SSDP / mDNS answers. Default: 2.0")
+    p.add_argument("--no-passive", action="store_true",
+                   help="Skip the multicast discovery step; read the ARP cache only.")
+    p.add_argument("--resolve", action="store_true",
+                   help="Reverse-DNS each address for its hostname (slower).")
+    p.add_argument("--max-sweep", type=int, default=4096, metavar="HOSTS",
+                   help="Refuse to sweep a range larger than this. Default: 4096")
+    p.add_argument("--summary", action="store_true",
+                   help="List segments and conflicts only, without the addresses.")
+    p.add_argument("--no-color", action="store_true",
+                   help="Disable colored output (also honors NO_COLOR).")
+    p.set_defaults(func=cmd_netsurvey)
+
     # ── wifi ───────────────────────────────────────────────────
     p = sub.add_parser(
         "wifi",
@@ -741,8 +797,6 @@ def cmd_samplefiles(args: argparse.Namespace) -> None:
 
 
 def cmd_netscan(args: argparse.Namespace) -> None:
-    import ipaddress
-
     color = _use_color(False if args.no_color else None)
     network = ipaddress.ip_network(args.network, strict=False) if args.network else None
 
@@ -769,6 +823,85 @@ def cmd_netscan(args: argparse.Namespace) -> None:
         host_col = _colorize(f"{device.hostname or '-':<28}", "host", color)
         print(f"{ip_col}{mac_col}{vendor_col}{host_col}{note}")
     print(f"Found {len(devices)} device(s).")
+
+
+def _survey_source_label(sources: set[str], width: int = 22) -> str:
+    """Condense a device's discovery sources into a stable, readable column."""
+    order = ["self", "gateway", "arp", "ping", "ssdp", "mdns"]
+    label = ",".join(source for source in order if source in sources) or "-"
+    if len(label) > width - 1:
+        label = label[: width - 2] + "…"
+    return f"{label:<{width}}"
+
+
+def cmd_netsurvey(args: argparse.Namespace) -> None:
+    from .network import survey_network
+
+    color = _use_color(False if args.no_color else None)
+    if not 8 <= args.group_prefix <= 32:
+        raise ValueError("--group-prefix must be between 8 and 32")
+
+    survey, notes = survey_network(
+        include=args.include,
+        group_prefix=args.group_prefix,
+        sweep=args.sweep,
+        passive=not args.no_passive,
+        timeout=args.timeout,
+        workers=args.workers,
+        discover_timeout=args.discover_timeout,
+        resolve=args.resolve,
+        max_sweep_hosts=args.max_sweep,
+        progress=lambda message: print(message, file=sys.stderr),
+    )
+
+    print(_colorize("INTERFACES", "header", color))
+    for nic in survey.interfaces:
+        note = "gateway " + survey.gateway if survey.gateway and \
+            ipaddress.ip_address(survey.gateway) in nic.network else ""
+        if nic.is_link_local:
+            note = "self-assigned (no DHCP)"
+        name_col = _colorize(f"{nic.name:<12}", "self" if nic.ip == survey.self_ip else "dim", color)
+        print(f"  {name_col}{f'{nic.ip}/{nic.prefix}':<22}{_colorize(note, 'note', color)}".rstrip())
+
+    print()
+    local_count = sum(1 for segment in survey.segments if segment.is_local)
+    print(_colorize(
+        f"SEGMENTS  ({len(survey.segments)} total, {local_count} yours, "
+        f"{survey.device_count} address(es) in use)", "header", color,
+    ))
+    for segment in survey.segments:
+        scope = f"local ({', '.join(segment.interfaces)})" if segment.is_local else "foreign"
+        how = "swept" if segment.swept else "passive"
+        head = f"  {str(segment.network):<20}{scope:<24}{how:<10}{len(segment.devices)} host(s)"
+        print(_colorize(head.rstrip(), "segment" if segment.is_local else "warn", color))
+        if args.summary:
+            continue
+        for device in segment.devices:
+            note = "this device" if device.is_self else ("gateway / router" if device.is_gateway else "")
+            kind = "self" if device.is_self else ("gateway" if device.is_gateway else None)
+            ip_col = _colorize(f"{device.ip:<16}", kind, color) if kind else f"{device.ip:<16}"
+            mac_col = _colorize(f"{device.mac or '-':<20}", "mac", color)
+            host_col = _colorize(f"{device.hostname or '-':<28}", "host", color) if args.resolve else ""
+            seen_col = _colorize(_survey_source_label(device.sources), "note", color)
+            print(f"    {ip_col}{mac_col}{host_col}{seen_col}{note}".rstrip())
+
+    print()
+    if survey.conflicts:
+        print(_colorize(f"CONFLICTS  ({len(survey.conflicts)})", "header", color))
+        for conflict in survey.conflicts:
+            marker = "!" if conflict.kind != "shared-l2" else "-"
+            kind = "warn" if conflict.kind != "shared-l2" else "note"
+            print(_colorize(f"  {marker} [{conflict.kind}] {conflict.message}", kind, color))
+    else:
+        print("No address or range conflicts detected.")
+
+    for note in notes:
+        print(_colorize(f"  note: {note}", "note", color), file=sys.stderr)
+    if not args.sweep and not args.include:
+        print(_colorize(
+            "Passive pass only — run with --sweep to enumerate every address in each segment.",
+            "note", color,
+        ), file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------

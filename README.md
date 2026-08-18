@@ -68,6 +68,7 @@ clipvideo --help
 | Command | Description |
 |---------|-------------|
 | `netscan` | List devices connected to your local network (Wi-Fi / router) with their IP, MAC, and hostname. `--lookup` adds the manufacturer. |
+| `netsurvey` | Map **every network segment** visible on the current link — your own interfaces, foreign subnets on the same switch, the addresses in use, and the conflicts between them. Built for shared networks (trade shows, offices). |
 | `wifi` | Manage Wi-Fi: `list`, `connect` (arrow-key picker + hidden password prompt), `on`, `off`, `forget`. Linux and Windows fully; macOS without `list`. |
 
 ## Examples
@@ -107,6 +108,18 @@ netscan --lookup
 # Scan a specific subnet, faster, without hostname lookups
 netscan --network 192.168.1.0/24 --timeout 0.5 --no-resolve
 
+# Map every network segment and address around you (passive, ~2s)
+netsurvey
+
+# Segments and conflicts only, no address lists
+netsurvey --summary
+
+# Also ping-sweep your ranges and the discovered ones
+netsurvey --sweep
+
+# Check specific ranges before assigning them at a venue
+netsurvey --include 192.168.1.0/24 --include 10.0.0.0/24
+
 # Show the Wi-Fi networks in range (Linux / Windows)
 wifi list
 
@@ -128,6 +141,58 @@ wifi forget OldCafe
 > **manufacturer** — a network scan can't read a device's CPU/RAM/OS. Phones and
 > laptops that use a randomized/private MAC show up as `(private)` and can't be
 > attributed to a vendor.
+
+### Surveying a shared network
+
+`netscan` answers "who is on **my** subnet?". `netsurvey` answers "what is on
+this **wire**?" — the question that matters in an exhibition hall, an office, or
+a co-working space where other people's routers hand out their own ranges:
+
+```
+INTERFACES
+  en0         192.168.0.122/24      gateway 192.168.0.1
+  utun6       10.2.244.44/32
+
+SEGMENTS  (3 total, 2 yours, 9 address(es) in use)
+  192.168.0.0/24      local (en0)             swept     6 host(s)
+    192.168.0.1     06:f2:67:75:4d:e2   gateway,arp,ping      gateway / router
+    192.168.0.122   4e:e5:41:93:7c:1f   self,arp,mdns         this device
+    ...
+  10.77.0.0/24        foreign                 passive   2 host(s)
+    10.77.0.9       de:ad:be:ef:00:01   ssdp,arp
+
+CONFLICTS  (2)
+  ! [duplicate-ip] 192.168.0.50 answers from 2 MAC addresses (…) — two devices claim the same address
+  - [shared-l2] 1 foreign segment(s) share this link: 10.77.0.0/24
+```
+
+Three independent sources are combined, so segments you have no address in still
+show up:
+
+- **every local interface** with its real netmask (`ip` / `ifconfig` / `ipconfig`);
+- the **ARP / neighbour cache**, which lists link neighbours *regardless of
+  subnet* — this is what exposes somebody else's range on the same switch;
+- **SSDP and mDNS** answers, sent out of each interface (skip with `--no-passive`).
+
+The default pass is passive and takes about two seconds. `--sweep` additionally
+ping-sweeps your ranges and the discovered ones so each address list is complete;
+`--include CIDR` sweeps a specific range you are about to assign. Ranges larger
+than `--max-sweep` (4096 hosts) are narrowed to the /24 around your own address
+or skipped, with a note on stderr.
+
+Reported conflicts:
+
+| Kind | Meaning |
+|------|---------|
+| `duplicate-ip` | One address answers from two MACs — two devices claim it. |
+| `overlap` | A foreign range, or a second local interface (VPN!), overlaps one of your subnets. |
+| `no-dhcp` | An interface self-assigned a `169.254.x.x` address; no DHCP server answered. |
+| `router-bridge` | One MAC answers for addresses in several segments — a router joining them. |
+| `shared-l2` | Foreign segments are present on your link (informational). |
+
+> Survey only networks you are entitled to. `netsurvey` sends ordinary pings and
+> standard discovery multicast — nothing privileged — but probing networks you
+> don't administer may still violate policy or law.
 
 ### Wi-Fi
 

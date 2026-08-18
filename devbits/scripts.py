@@ -85,3 +85,7 @@ def netscan() -> int:
 
 def wifi() -> int:
     return _run("wifi")
+
+
+def netsurvey() -> int:
+    return _run("netsurvey")
