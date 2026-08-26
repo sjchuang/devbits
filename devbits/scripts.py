@@ -31,7 +31,12 @@ def video2gif() -> int:
     return _run("video2gif")
 
 
+def editvideo() -> int:
+    return _run("editvideo")
+
+
 def clipvideo() -> int:
+    # Deprecated alias; main() prints the rename notice.
     return _run("clipvideo")
 
 

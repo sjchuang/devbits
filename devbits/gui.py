@@ -1,4 +1,4 @@
-"""Web-based ClipChamp-style video editor GUI for devbits clipvideo.
+"""Web-based ClipChamp-style video editor GUI for devbits editvideo.
 
 Launches a local HTTP server and opens the browser. The frontend uses
 native <video> playback for performance; the backend handles export via cv2.
@@ -32,7 +32,7 @@ _HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Divbits.ClipVideo</title>
+<title>Devbits.EditVideo</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2NCA2NCc+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSdnJyB4MT0nMCcgeTE9JzAnIHgyPScxJyB5Mj0nMSc+PHN0b3Agb2Zmc2V0PScwJyBzdG9wLWNvbG9yPScjN2M1Y2ZjJy8+PHN0b3Agb2Zmc2V0PScxJyBzdG9wLWNvbG9yPScjMDBkNGZmJy8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9JzY0JyBoZWlnaHQ9JzY0JyByeD0nMTUnIGZpbGw9J3VybCgjZyknLz48cGF0aCBkPSdNMjUgMTkgTDQ3IDMyIEwyNSA0NSBaJyBmaWxsPScjZmZmJy8+PC9zdmc+Cg==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -172,6 +172,7 @@ body{
 .preview-area video{
   max-width:100%;max-height:100%;object-fit:contain;
   border-radius:4px;
+  transition:transform .2s ease;
 }
 .no-video{color:#555;font-size:1.1rem;text-align:center;line-height:2}
 
@@ -429,6 +430,38 @@ kbd{
 .ctx-speed:hover{background:rgba(124,92,252,.35)}
 .ctx-speed.active{background:#7c5cfc;color:#fff}
 
+/* ── Crop Overlay ──────────────────────────────────────────── */
+.crop-overlay{position:absolute;display:none;z-index:5;overflow:hidden}
+.crop-overlay.show{display:block}
+.crop-rect{
+  position:absolute;box-sizing:border-box;cursor:move;
+  border:1.5px solid #7c5cfc;
+  box-shadow:0 0 0 9999px rgba(0,0,0,.65);
+  background:
+    linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 33.3% 0/1px 100% no-repeat,
+    linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 66.6% 0/1px 100% no-repeat,
+    linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 0 33.3%/100% 1px no-repeat,
+    linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 0 66.6%/100% 1px no-repeat;
+}
+.crop-handle{
+  position:absolute;width:12px;height:12px;z-index:6;
+  background:#fff;border:2px solid #7c5cfc;border-radius:50%;box-sizing:border-box;
+}
+.crop-handle[data-dir="nw"]{left:-6px;top:-6px;cursor:nwse-resize}
+.crop-handle[data-dir="n"]{left:50%;top:-6px;margin-left:-6px;cursor:ns-resize}
+.crop-handle[data-dir="ne"]{right:-6px;top:-6px;cursor:nesw-resize}
+.crop-handle[data-dir="e"]{right:-6px;top:50%;margin-top:-6px;cursor:ew-resize}
+.crop-handle[data-dir="se"]{right:-6px;bottom:-6px;cursor:nwse-resize}
+.crop-handle[data-dir="s"]{left:50%;bottom:-6px;margin-left:-6px;cursor:ns-resize}
+.crop-handle[data-dir="sw"]{left:-6px;bottom:-6px;cursor:nesw-resize}
+.crop-handle[data-dir="w"]{left:-6px;top:50%;margin-top:-6px;cursor:ew-resize}
+.crop-size{
+  position:absolute;top:-26px;left:0;white-space:nowrap;
+  font-size:.72rem;color:#fff;background:rgba(0,0,0,.6);
+  padding:2px 7px;border-radius:4px;pointer-events:none;
+}
+.crop-actions{position:absolute;top:10px;right:10px;display:flex;gap:8px;z-index:7}
+
 /* ── Responsive ────────────────────────────────────────────── */
 @media(max-width:850px){
   .main{flex-direction:column}
@@ -441,7 +474,7 @@ kbd{
 <!-- Top Bar -->
 <header class="topbar">
   <div style="display:flex;align-items:center">
-    <span class="logo">✂ Divbits.ClipVideo</span>
+    <span class="logo">✂ Devbits.EditVideo</span>
   </div>
   <div class="topbar-actions">
     <button class="btn btn-primary" onclick="showExportModal()">⬇ Export</button>
@@ -471,6 +504,24 @@ kbd{
         <small style="opacity:.5">Supports MP4, AVI, MOV, MKV, WebM</small>
       </div>
       <div class="drop-zone" id="dropZone"><span>Drop video file here</span></div>
+      <div class="crop-overlay" id="cropOverlay">
+        <div class="crop-rect" id="cropRect">
+          <span class="crop-size" id="cropSizeLabel"></span>
+          <div class="crop-handle" data-dir="nw"></div>
+          <div class="crop-handle" data-dir="n"></div>
+          <div class="crop-handle" data-dir="ne"></div>
+          <div class="crop-handle" data-dir="e"></div>
+          <div class="crop-handle" data-dir="se"></div>
+          <div class="crop-handle" data-dir="s"></div>
+          <div class="crop-handle" data-dir="sw"></div>
+          <div class="crop-handle" data-dir="w"></div>
+        </div>
+        <div class="crop-actions">
+          <button class="btn btn-ghost" onclick="resetCropDraft()" title="Select the full frame">Reset</button>
+          <button class="btn btn-ghost" onclick="cancelCrop()" title="Cancel (Esc)">Cancel</button>
+          <button class="btn btn-primary" onclick="applyCrop()" title="Apply (Enter)">✓ Apply</button>
+        </div>
+      </div>
     </div>
 
     <!-- Playback Controls -->
@@ -505,6 +556,7 @@ kbd{
     <div class="timeline-section">
       <div class="timeline-toolbar">
         <button class="btn btn-ghost" onclick="splitAtPlayhead()" title="Split (S)">✂ Split<kbd>S</kbd></button>
+        <button class="btn btn-ghost" onclick="toggleCropMode()" title="Crop (C)">⛶ Crop<kbd>C</kbd></button>
         <button class="btn btn-danger" onclick="deleteSelected()" title="Delete (Del)">🗑 Delete<kbd>Del</kbd></button>
 
         <div style="flex:1"></div>
@@ -575,7 +627,8 @@ kbd{
 // ── State ──────────────────────────────────────────────────────
 const video = document.getElementById('video');
 let mediaLibrary = []; // {id, src, name, duration}
-let clips = []; // {id, src, name, startTime, endTime, speed, duration, hue}
+let clips = []; // {id, src, name, startTime, endTime, speed, duration, hue, crop}
+                // crop: {x, y, w, h} as fractions (0–1) of the source frame, or null
 let selectedClipId = null;
 let activeClipIndex = 0;
 let timelineTime = 0;
@@ -996,6 +1049,7 @@ function loadVideoSource(src, seekTime, shouldPlay = false) {
       video.play().catch(e => console.log("Play interrupted:", e));
     }
   }
+  applyPreviewCrop();
 }
 
 function seekTimeline(t) {
@@ -1349,7 +1403,7 @@ function renderTimeline() {
 
     const label = document.createElement('div');
     label.className = 'clip-label';
-    label.innerHTML = `${clip.name}<small>${clipDur.toFixed(1)}s · ${clip.speed}×</small>`;
+    label.innerHTML = `${clip.name}<small>${clipDur.toFixed(1)}s · ${clip.speed}×${clip.crop ? ' · ⛶' : ''}</small>`;
     el.appendChild(label);
 
     const lh = document.createElement('div');
@@ -1388,7 +1442,7 @@ function layoutClips() {
       el.style.left = (accTime * PX_PER_SEC + i * CLIP_GAP) + 'px';
       el.style.width = (clipDur * PX_PER_SEC) + 'px';
       const lbl = el.querySelector('.clip-label');
-      if (lbl) lbl.innerHTML = `${clip.name}<small>${clipDur.toFixed(1)}s · ${clip.speed}×</small>`;
+      if (lbl) lbl.innerHTML = `${clip.name}<small>${clipDur.toFixed(1)}s · ${clip.speed}×${clip.crop ? ' · ⛶' : ''}</small>`;
     }
     accTime += clipDur;
   });
@@ -1539,6 +1593,172 @@ function deleteSelected() {
   toast('Clip deleted');
 }
 
+// ── Crop (spatial) ─────────────────────────────────────────────
+let cropMode = false;
+let cropDraft = null;   // {x, y, w, h} fractions while editing
+let cropClipId = null;
+
+// Displayed video content box inside #previewArea (object-fit: contain math).
+// Uses layout metrics (offset*), which ignore the preview-fit transform.
+function getVideoContentRect() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const ew = video.offsetWidth, eh = video.offsetHeight;
+  const scale = Math.min(ew / vw, eh / vh);
+  const cw = vw * scale, ch = vh * scale;
+  return {
+    left: video.offsetLeft + (ew - cw) / 2,   // offsetParent is #previewArea (position:relative)
+    top: video.offsetTop + (eh - ch) / 2,
+    width: cw, height: ch,
+  };
+}
+
+function toggleCropMode() {
+  if (cropMode) { cancelCrop(); return; }
+  if (clips.length === 0 || !video.videoWidth) { toast('Load a clip first'); return; }
+  const clip = clips.find(c => c.id === selectedClipId) || clips[activeClipIndex];
+  if (!clip) return;
+  selectClip(clip.id);
+  video.pause();
+  cropMode = true;
+  cropClipId = clip.id;
+  cropDraft = clip.crop ? { ...clip.crop } : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+  // Show the full, untransformed frame while choosing the region.
+  video.style.clipPath = '';
+  video.style.transform = '';
+  video.style.transformOrigin = '';
+  document.getElementById('cropOverlay').classList.add('show');
+  layoutCropOverlay();
+  toast('Drag to choose the region — Enter to apply, Esc to cancel');
+}
+
+function layoutCropOverlay() {
+  const r = getVideoContentRect();
+  if (!r || !cropDraft) return;
+  const ov = document.getElementById('cropOverlay');
+  ov.style.left = r.left + 'px';
+  ov.style.top = r.top + 'px';
+  ov.style.width = r.width + 'px';
+  ov.style.height = r.height + 'px';
+  const rect = document.getElementById('cropRect');
+  rect.style.left = (cropDraft.x * r.width) + 'px';
+  rect.style.top = (cropDraft.y * r.height) + 'px';
+  rect.style.width = (cropDraft.w * r.width) + 'px';
+  rect.style.height = (cropDraft.h * r.height) + 'px';
+  document.getElementById('cropSizeLabel').textContent =
+    Math.round(cropDraft.w * video.videoWidth) + '×' + Math.round(cropDraft.h * video.videoHeight);
+}
+
+function startCropDrag(e, dir) {
+  e.preventDefault();
+  e.stopPropagation();
+  const r = getVideoContentRect();
+  if (!r) return;
+  const sx = e.clientX, sy = e.clientY;
+  const o = { ...cropDraft };
+  const MIN = 0.05;
+  const onMove = ev => {
+    const dx = (ev.clientX - sx) / r.width;
+    const dy = (ev.clientY - sy) / r.height;
+    let { x, y, w, h } = o;
+    if (dir === 'move') {
+      x = Math.min(Math.max(0, o.x + dx), 1 - o.w);
+      y = Math.min(Math.max(0, o.y + dy), 1 - o.h);
+    } else {
+      if (dir.includes('w')) { const nx = Math.min(Math.max(0, o.x + dx), o.x + o.w - MIN); w = o.w + (o.x - nx); x = nx; }
+      if (dir.includes('e')) { w = Math.min(Math.max(MIN, o.w + dx), 1 - o.x); }
+      if (dir.includes('n')) { const ny = Math.min(Math.max(0, o.y + dy), o.y + o.h - MIN); h = o.h + (o.y - ny); y = ny; }
+      if (dir.includes('s')) { h = Math.min(Math.max(MIN, o.h + dy), 1 - o.y); }
+    }
+    cropDraft = { x, y, w, h };
+    layoutCropOverlay();
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function resetCropDraft() {
+  cropDraft = { x: 0, y: 0, w: 1, h: 1 };
+  layoutCropOverlay();
+}
+
+function applyCrop() {
+  const clip = clips.find(c => c.id === cropClipId);
+  if (clip && cropDraft) {
+    const full = cropDraft.x <= 0.001 && cropDraft.y <= 0.001 && cropDraft.w >= 0.998 && cropDraft.h >= 0.998;
+    clip.crop = full ? null : {
+      x: +cropDraft.x.toFixed(4), y: +cropDraft.y.toFixed(4),
+      w: +cropDraft.w.toFixed(4), h: +cropDraft.h.toFixed(4),
+    };
+    toast(clip.crop ? 'Crop applied' : 'Crop removed');
+  }
+  exitCropMode();
+  renderTimeline();
+}
+
+function removeCrop(clipId) {
+  const clip = clips.find(c => c.id === clipId);
+  if (!clip) return;
+  clip.crop = null;
+  applyPreviewCrop();
+  renderTimeline();
+  toast('Crop removed');
+}
+
+function cancelCrop() { exitCropMode(); }
+
+function exitCropMode() {
+  cropMode = false;
+  cropClipId = null;
+  cropDraft = null;
+  document.getElementById('cropOverlay').classList.remove('show');
+  applyPreviewCrop();
+}
+
+// Show only the cropped region of the active clip in the preview,
+// scaled up to fit the preview area and centered.
+function applyPreviewCrop() {
+  const clip = clips[activeClipIndex];
+  if (!cropMode && clip && clip.crop && video.videoWidth) {
+    const c = clip.crop;
+    video.style.clipPath =
+      `inset(${(c.y * 100).toFixed(2)}% ${((1 - c.x - c.w) * 100).toFixed(2)}% ` +
+      `${((1 - c.y - c.h) * 100).toFixed(2)}% ${(c.x * 100).toFixed(2)}%)`;
+    const pv = document.getElementById('previewArea');
+    const ew = video.offsetWidth, eh = video.offsetHeight;  // layout size, transform-independent
+    if (ew && eh) {
+      const s = Math.min(pv.clientWidth / (c.w * ew), pv.clientHeight / (c.h * eh));
+      const cx = (c.x + c.w / 2) * ew, cy = (c.y + c.h / 2) * eh;
+      // Scale about the crop's center, then move that center to the preview's
+      // center (the untransformed element is already centered by flexbox).
+      video.style.transformOrigin = `${cx.toFixed(2)}px ${cy.toFixed(2)}px`;
+      video.style.transform =
+        `translate(${(ew / 2 - cx).toFixed(2)}px, ${(eh / 2 - cy).toFixed(2)}px) scale(${s.toFixed(4)})`;
+    }
+  } else {
+    video.style.clipPath = '';
+    video.style.transform = '';
+    video.style.transformOrigin = '';
+  }
+}
+// Element size settles once metadata is known — re-fit then.
+video.addEventListener('loadedmetadata', applyPreviewCrop);
+
+document.addEventListener('DOMContentLoaded', () => {
+  const rect = document.getElementById('cropRect');
+  rect.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('crop-handle')) return;
+    startCropDrag(e, 'move');
+  });
+  document.querySelectorAll('.crop-handle').forEach(h =>
+    h.addEventListener('mousedown', e => startCropDrag(e, h.dataset.dir)));
+});
+window.addEventListener('resize', () => { if (cropMode) layoutCropOverlay(); else applyPreviewCrop(); });
+
 // ── Clip Context Menu ──────────────────────────────────────────
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
 let ctxMenuEl = null;
@@ -1569,6 +1789,20 @@ function showClipContextMenu(e, clipId, clipEl) {
   split.innerHTML = `<span>✂</span><span>Split here</span><kbd>S</kbd>`;
   split.onclick = () => { closeContextMenu(); splitClipAt(clipId, splitTime); };
   menu.appendChild(split);
+
+  const cropItem = document.createElement('div');
+  cropItem.className = 'ctx-item';
+  cropItem.innerHTML = `<span>⛶</span><span>${clip.crop ? 'Edit crop' : 'Crop'}</span><kbd>C</kbd>`;
+  cropItem.onclick = () => { closeContextMenu(); selectClip(clipId); toggleCropMode(); };
+  menu.appendChild(cropItem);
+
+  if (clip.crop) {
+    const uncrop = document.createElement('div');
+    uncrop.className = 'ctx-item';
+    uncrop.innerHTML = `<span>⊘</span><span>Remove crop</span>`;
+    uncrop.onclick = () => { closeContextMenu(); removeCrop(clipId); };
+    menu.appendChild(uncrop);
+  }
 
   const del = document.createElement('div');
   del.className = 'ctx-item danger';
@@ -1667,7 +1901,8 @@ async function doExport() {
           src: c.src,
           startTime: c.startTime,
           endTime: c.endTime,
-          speed: c.speed
+          speed: c.speed,
+          crop: c.crop || null
         })),
         format: fmt,
         filename: filename,
@@ -1698,10 +1933,17 @@ async function doExport() {
 // ── Keyboard Shortcuts ─────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (cropMode) {
+    // Modal crop editing: Enter applies, Esc cancels, everything else is inert.
+    if (e.code === 'Enter') { e.preventDefault(); applyCrop(); }
+    else if (e.code === 'Escape') { cancelCrop(); }
+    return;
+  }
   switch (e.code) {
     case 'Escape': closeContextMenu(); break;
     case 'Space': e.preventDefault(); togglePlay(); break;
     case 'KeyS': splitAtPlayhead(); break;
+    case 'KeyC': toggleCropMode(); break;
     case 'Delete': case 'Backspace': deleteSelected(); break;
     case 'ArrowLeft':
       e.preventDefault();
@@ -1782,6 +2024,36 @@ def _atempo_factors(speed: float) -> list[float]:
         s /= 0.5
     factors.append(round(s, 6))
     return factors
+
+
+def _norm_crop(crop) -> dict | None:
+    """Validate a clip's crop spec ({x, y, w, h} as 0–1 fractions of the frame).
+
+    Returns a clamped copy, or None when absent, malformed, or a no-op
+    (covering effectively the whole frame).
+    """
+    if not isinstance(crop, dict):
+        return None
+    try:
+        x = min(max(float(crop["x"]), 0.0), 0.95)
+        y = min(max(float(crop["y"]), 0.0), 0.95)
+        w = min(max(float(crop["w"]), 0.02), 1.0 - x)
+        h = min(max(float(crop["h"]), 0.02), 1.0 - y)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if x <= 0.001 and y <= 0.001 and w >= 0.998 and h >= 0.998:
+        return None
+    return {"x": x, "y": y, "w": w, "h": h}
+
+
+def _crop_frame(frame, crop: dict):
+    """Slice a BGR frame to a normalized crop region (fractions of the frame)."""
+    fh, fw = frame.shape[:2]
+    x1 = min(int(fw * crop["x"]), fw - 2)
+    y1 = min(int(fh * crop["y"]), fh - 2)
+    x2 = min(fw, x1 + max(2, int(fw * crop["w"])))
+    y2 = min(fh, y1 + max(2, int(fh * crop["h"])))
+    return frame[y1:y2, x1:x2]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -1970,6 +2242,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._json_response({"error": "No clips"}, 400)
             return
 
+        for c in clip_defs:
+            c["crop"] = _norm_crop(c.get("crop"))
+
         try:
             if _ffmpeg_bin():
                 try:
@@ -2021,6 +2296,12 @@ class _Handler(BaseHTTPRequestHandler):
         if orig_w <= 0 or orig_h <= 0:
             raise RuntimeError("Could not determine source dimensions")
 
+        # A crop on the first clip defines the output aspect ratio.
+        first_crop = clip_defs[0].get("crop")
+        if first_crop:
+            orig_w = max(2, int(orig_w * first_crop["w"]))
+            orig_h = max(2, int(orig_h * first_crop["h"]))
+
         if resolution > 0:
             w = resolution
             h = int(orig_h * (resolution / orig_w))
@@ -2052,9 +2333,15 @@ class _Handler(BaseHTTPRequestHandler):
             end = float(c["endTime"])
             speed = float(c.get("speed", 1.0)) or 1.0
             vlbl = f"v{i}"
+            crop = c.get("crop")
+            cropf = (
+                f"crop=iw*{crop['w']:.4f}:ih*{crop['h']:.4f}"
+                f":iw*{crop['x']:.4f}:ih*{crop['y']:.4f},"
+                if crop else ""
+            )
             parts.append(
                 f"[{i}:v]trim=start={start}:end={end},setpts=(PTS-STARTPTS)/{speed},"
-                f"fps={out_fps},scale={w}:{h}:flags=bicubic,setsar=1[{vlbl}]"
+                f"{cropf}fps={out_fps},scale={w}:{h}:flags=bicubic,setsar=1[{vlbl}]"
             )
             concat_labels.append(f"[{vlbl}]")
             if want_audio:
@@ -2153,16 +2440,23 @@ class _Handler(BaseHTTPRequestHandler):
         orig_h = int(first_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         first_cap.release()
 
+        # A crop on the first clip defines the output aspect ratio.
+        first_crop = clip_defs[0].get("crop")
+        if first_crop and orig_w > 0:
+            orig_w = max(2, int(orig_w * first_crop["w"]))
+            orig_h = max(2, int(orig_h * first_crop["h"]))
+
         # Apply resolution scaling
         if resolution > 0 and orig_w > 0:
             scale = resolution / orig_w
             w = resolution
             h = int(orig_h * scale)
-            # Ensure even dimensions for video codecs
-            h = h + (h % 2)
         else:
             w = orig_w
             h = orig_h
+        # Ensure even dimensions for video codecs
+        w = w + (w % 2)
+        h = h + (h % 2)
 
         # Pre-calculate total frames for progress tracking
         total_frames = 0
@@ -2201,6 +2495,7 @@ class _Handler(BaseHTTPRequestHandler):
                 speed = clip.get("speed", 1.0)
                 sample_every = max(1, int(round(speed)))
 
+                crop = clip.get("crop")
                 cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
                 fi = start_f
                 while fi <= end_f:
@@ -2208,6 +2503,8 @@ class _Handler(BaseHTTPRequestHandler):
                     if not ok:
                         break
                     if (fi - start_f) % sample_every == 0:
+                        if crop:
+                            frame = _crop_frame(frame, crop)
                         if frame.shape[1] != w or frame.shape[0] != h:
                             frame = cv2.resize(frame, (w, h))
                         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -2255,6 +2552,7 @@ class _Handler(BaseHTTPRequestHandler):
                     speed = clip.get("speed", 1.0)
                     step = max(1.0, speed)
 
+                    crop = clip.get("crop")
                     # Read sequentially (decoders are optimized for forward reads);
                     # seeking per-frame with cap.set() is orders of magnitude slower.
                     cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
@@ -2265,6 +2563,8 @@ class _Handler(BaseHTTPRequestHandler):
                         if not ok:
                             break
                         if fi >= next_write - 1e-9:
+                            if crop:
+                                frame = _crop_frame(frame, crop)
                             if frame.shape[1] != w or frame.shape[0] != h:
                                 frame = cv2.resize(frame, (w, h))
                             writer.write(frame)
@@ -2301,9 +2601,9 @@ def _find_free_port() -> int:
 
 
 def launch_gui(video_path: Path | None = None) -> None:
-    """Launch the ClipVideo web editor."""
+    """Launch the EditVideo web editor."""
     port = _find_free_port()
-    upload_dir = Path(tempfile.mkdtemp(prefix="clipvideo_uploads_"))
+    upload_dir = Path(tempfile.mkdtemp(prefix="editvideo_uploads_"))
     export_dir = Path.cwd()
 
     # Resolve to absolute so relative paths work for file serving
@@ -2317,7 +2617,7 @@ def launch_gui(video_path: Path | None = None) -> None:
     server = _ThreadedHTTPServer(("127.0.0.1", port), _Handler)
     url = f"http://127.0.0.1:{port}"
 
-    print(f"ClipVideo Editor running at {url}")
+    print(f"EditVideo Editor running at {url}")
     print("Press Ctrl+C to stop.")
 
     # Open browser

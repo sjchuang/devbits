@@ -195,20 +195,20 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Output size as 'width,height' in pixels, e.g. 640,360.")
     p.set_defaults(func=cmd_video2gif)
 
-    # ── clipvideo ──────────────────────────────────────────────
+    # ── editvideo ──────────────────────────────────────────────
     p = sub.add_parser(
-        "clipvideo",
-        help="Clip (trim) a video by time range or frame range.",
+        "editvideo",
+        help="Edit (trim) a video by time range or frame range.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "Trim a portion of a video. You can specify the range in seconds\n"
             "(--start / --end) or in frame indices (--start-frame / --end-frame).\n"
             "If no range is given, the interactive browser-based editor opens.\n\n"
             "Examples:\n"
-            "  devbits clipvideo movie.mp4                 # opens the GUI editor\n"
-            "  devbits clipvideo movie.mp4 --start 5.0 --end 20.0\n"
-            "  devbits clipvideo movie.mp4 --start-frame 150 --end-frame 600\n"
-            "  devbits clipvideo --gui                     # GUI with no initial video"
+            "  devbits editvideo movie.mp4                 # opens the GUI editor\n"
+            "  devbits editvideo movie.mp4 --start 5.0 --end 20.0\n"
+            "  devbits editvideo movie.mp4 --start-frame 150 --end-frame 600\n"
+            "  devbits editvideo --gui                     # GUI with no initial video"
         ),
     )
     p.add_argument("video", type=Path, nargs="?", default=None,
@@ -225,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="End frame index (0-based, inclusive).")
     p.add_argument("--gui", action="store_true",
                    help="Open interactive browser-based clip editor.")
-    p.set_defaults(func=cmd_clipvideo)
+    p.set_defaults(func=cmd_editvideo)
 
     # ── resizevideo ────────────────────────────────────────────
     p = sub.add_parser(
@@ -700,7 +700,7 @@ def cmd_video2gif(args: argparse.Namespace) -> None:
     print(video_to_gif(video, output, args.fps, args.start, args.end, args.size))
 
 
-def cmd_clipvideo(args: argparse.Namespace) -> None:
+def cmd_editvideo(args: argparse.Namespace) -> None:
     has_range = any(v is not None for v in (args.start, args.end, args.start_frame, args.end_frame))
     # Open the interactive editor when --gui is set, or by default when a video
     # is provided without an explicit trim range.
@@ -1141,6 +1141,15 @@ def cmd_wifi_forget(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "clipvideo":
+        # Deprecated alias kept so existing invocations keep working.
+        print(
+            "Note: 'clipvideo' has been renamed to 'editvideo' and will be "
+            "removed in a future release. Please use 'editvideo' instead.",
+            file=sys.stderr,
+        )
+        argv[0] = "editvideo"
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

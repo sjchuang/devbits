@@ -1,6 +1,6 @@
 [project]
 name = "devbits"
-version = "1.4.0"
+version = "1.4.1"
 description = "A lightweight CLI toolkit for daily development utilities."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -26,7 +26,8 @@ images2video = "devbits.scripts:images2video"
 video2images = "devbits.scripts:video2images"
 images2gif = "devbits.scripts:images2gif"
 video2gif = "devbits.scripts:video2gif"
-clipvideo = "devbits.scripts:clipvideo"
+editvideo = "devbits.scripts:editvideo"
+clipvideo = "devbits.scripts:clipvideo"  # deprecated alias for editvideo
 resizevideo = "devbits.scripts:resizevideo"
 image2ico = "devbits.scripts:image2ico"
 resizeimage = "devbits.scripts:resizeimage"

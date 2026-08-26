@@ -25,8 +25,8 @@ devbits <command> [options]
 Use `--help` on any command for detailed usage and parameter descriptions:
 
 ```bash
-devbits clipvideo --help
-clipvideo --help
+devbits editvideo --help
+editvideo --help
 ```
 
 ## Commands
@@ -35,7 +35,7 @@ clipvideo --help
 
 | Command | Description |
 |---------|-------------|
-| `clipvideo` | Trim a video by time (seconds) or frame range. Includes `--gui` for browser-based editing. |
+| `editvideo` | Trim a video by time (seconds) or frame range. Includes `--gui` for browser-based editing. (Formerly `clipvideo`, which still works but prints a rename notice.) |
 | `video2images` | Extract frames from a video. |
 | `video2gif` | Convert a video (or a portion) to animated GIF. |
 | `images2video` | Assemble an image sequence into an MP4 video. |
@@ -75,10 +75,10 @@ clipvideo --help
 
 ```bash
 # Trim video from 5s to 20s
-clipvideo movie.mp4 --start 5.0 --end 20.0
+editvideo movie.mp4 --start 5.0 --end 20.0
 
 # Open interactive clip editor in the browser
-clipvideo movie.mp4 --gui
+editvideo movie.mp4 --gui
 
 # Convert video to GIF (3.5s–10s at 15 fps)
 video2gif movie.mp4 --start 3.5 --end 10.0 --fps 15
@@ -273,7 +273,7 @@ dependency for one platform, devbits doesn't scan on macOS at all.
 When `-o` / `--output` is omitted, the output filename is derived from the input:
 
 ```
-clipvideo movie.mp4          →  movie_clip.mp4
+editvideo movie.mp4          →  movie_clip.mp4
 video2gif movie.mp4          →  movie.gif
 resizeimage photo.jpg        →  photo_resized.jpg
 recolor logo.png             →  logo_revised.png
