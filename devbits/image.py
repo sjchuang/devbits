@@ -86,6 +86,7 @@ def recolor_image(
     output_path: Path,
     color: str = "black",
     threshold: int = 60,
+    remove_background: bool = False,
 ) -> Path:
     """Recolor the foreground of a logo / icon while keeping its background.
 
@@ -93,8 +94,9 @@ def recolor_image(
     treated as background) or, for fully opaque images, from the dominant border
     color (the lighter surrounding area). Every foreground pixel is repainted
     with ``color`` (a name like ``black``, a hex value like ``#1a73e8``, or an
-    ``R,G,B`` triple like ``0,178,179``). The result is always saved as an RGBA
-    PNG so soft, anti-aliased edges are kept.
+    ``R,G,B`` triple like ``0,178,179``). With ``remove_background`` the
+    background pixels are made fully transparent instead of being kept. The
+    result is always saved as an RGBA PNG so soft, anti-aliased edges are kept.
     """
     import numpy as np
 
@@ -127,6 +129,9 @@ def recolor_image(
     arr[..., 0][foreground] = target_rgb[0]
     arr[..., 1][foreground] = target_rgb[1]
     arr[..., 2][foreground] = target_rgb[2]
+
+    if remove_background:
+        arr[..., 3][~foreground] = 0
 
     # Step 3: export as RGBA PNG.
     Image.fromarray(arr, mode="RGBA").save(output_path, format="PNG")

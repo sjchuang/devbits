@@ -300,7 +300,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  devbits recolor logo.png\n"
             "  devbits recolor logo.png --color '#1a73e8'\n"
             "  devbits recolor logo.png --color 0,178,179\n"
-            "  devbits recolor icon.jpg --color white --threshold 90"
+            "  devbits recolor icon.jpg --color white --threshold 90\n"
+            "  devbits recolor icon.jpg --rmbg"
         ),
     )
     p.add_argument("image", type=Path, help="Input logo / icon image.")
@@ -310,6 +311,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Target foreground color: name, hex, or R,G,B (e.g. black, '#1a73e8', 0,178,179). Default: black")
     p.add_argument("--threshold", type=int, default=60,
                    help="Color distance from the background for opaque images. Default: 60")
+    p.add_argument("--rmbg", action="store_true",
+                   help="Remove the background by making it fully transparent.")
     p.set_defaults(func=cmd_recolor)
 
     # ── batchimages ────────────────────────────────────────────
@@ -736,7 +739,7 @@ def cmd_resizeimage(args: argparse.Namespace) -> None:
 def cmd_recolor(args: argparse.Namespace) -> None:
     image = ensure_exists(args.image)
     output = args.output or _derive_output(image, ".png", "revised")
-    print(recolor_image(image, output, args.color, args.threshold))
+    print(recolor_image(image, output, args.color, args.threshold, args.rmbg))
 
 
 def cmd_batchimages(args: argparse.Namespace) -> None:
