@@ -71,6 +71,12 @@ editvideo --help
 | `netsurvey` | Map **every network segment** visible on the current link — your own interfaces, foreign subnets on the same switch, the addresses in use, and the conflicts between them. Built for shared networks (trade shows, offices). |
 | `wifi` | Manage Wi-Fi: `list`, `connect` (arrow-key picker + hidden password prompt), `on`, `off`, `forget`. Linux and Windows fully; macOS without `list`. |
 
+### Windows
+
+| Command | Description |
+|---------|-------------|
+| `ime` | Stop games from triggering input-method switches. `start` / `stop` / `restart` / `status` run a background watcher; `disable-hotkeys` turns off Alt+Shift, Ctrl+Space and friends for good. Windows only. |
+
 ## Examples
 
 ```bash
@@ -135,6 +141,18 @@ wifi off
 
 # Stop a network from auto-connecting
 wifi forget OldCafe
+
+# Stop Shift / Alt / Space from switching the input method while gaming
+ime disable-hotkeys        # once, applies at the next sign-in
+ime start                  # before you play
+ime status
+ime stop
+
+# Only guard specific games, and leave everything else alone
+ime start --apps valorant.exe,cs2.exe
+
+# For exclusive-fullscreen games: remove the other input languages outright
+ime start --strict
 ```
 
 > `netscan` reports IP, MAC, hostname and (with `--lookup`) the hardware
@@ -267,6 +285,48 @@ That is a TCC privacy permission, not a file permission: `sudo` does not bypass
 it, the authorization database is SIP-protected, and a CLI cannot request it —
 only a bundled app linking CoreLocation can. Rather than ship a pyobjc
 dependency for one platform, devbits doesn't scan on macOS at all.
+
+### Input methods while gaming (Windows)
+
+Games bind Shift, Alt and Space to actions, and Windows binds the same keys to
+input-method switches. Mid-fight you end up composing Chinese instead of
+shooting. Three separate mechanisms cause it, each living somewhere different:
+
+| Trigger | What it is | Turned off by |
+|---------|-----------|---------------|
+| `Alt+Shift`, `Ctrl+Shift` | Input **language** hotkey, in `HKCU\Keyboard Layout\Toggle` | `ime disable-hotkeys` |
+| `Ctrl+Space`, `Shift+Space` | IME on/off and full-width hotkeys, in `HKCU\Control Panel\Input Method\Hot Keys` | `ime disable-hotkeys` |
+| A bare `Shift` | The IME's **own** Chinese/English toggle — a conversion mode, not a hotkey | `ime start` only |
+
+So the two commands are complementary: run `ime disable-hotkeys` once, and
+`ime start` before you play.
+
+`disable-hotkeys` backs up what it replaces (`restore-hotkeys` puts it back
+exactly) and takes effect at your **next sign-in** — the settings are cached by
+`ctfmon.exe`, which Windows protects from being restarted.
+
+`start` runs a background watcher that forces the foreground window back to the
+English keyboard layout. A layout with no IME attached has no Chinese/English
+mode to toggle, which is what kills the bare-`Shift` case. It only posts window
+messages — no keyboard hook, no DLL injection — so anti-cheat drivers have
+nothing to object to.
+
+Two things follow from being that well-behaved:
+
+* **Elevated games need an elevated watcher.** Windows' UIPI silently drops
+  messages posted from a lower integrity level, so a game running as
+  Administrator can only be reached from an Administrator terminal. The watcher
+  detects windows it cannot switch, backs off instead of retrying forever, and
+  names them in `ime status`.
+* **Exclusive fullscreen may ignore the messages.** Borderless-windowed mode
+  avoids it.
+
+`ime start --strict` covers both by removing every non-English input language
+for the duration, which no keystroke can undo. `ime stop` puts them back; if the
+watcher is killed without it, `ime restore-languages` recovers them.
+
+State, backups and the watcher log live in `%LOCALAPPDATA%\devbits\ime\`.
+
 
 ## Output Defaults
 

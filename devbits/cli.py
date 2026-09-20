@@ -664,6 +664,139 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Disable colored output (also honors NO_COLOR).")
     w.set_defaults(func=cmd_wifi_forget)
 
+    # ── ime ────────────────────────────────────────────────────
+    p = sub.add_parser(
+        "ime",
+        help="Windows: stop games from triggering input-method switches.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Keep Shift, Alt and Space from switching the input method while you\n"
+            "play. Windows only.\n\n"
+            "Three separate switches cause this, and they live in different\n"
+            "places, so there are two commands:\n\n"
+            "  disable-hotkeys  turns off Alt+Shift, Ctrl+Space and Shift+Space\n"
+            "                   in the registry. Permanent, but only applies at\n"
+            "                   the next sign-in.\n"
+            "  start            runs a background watcher that forces the\n"
+            "                   foreground window onto the English layout. Works\n"
+            "                   immediately, and is the only thing that stops a\n"
+            "                   bare Shift from toggling Chinese/English, since\n"
+            "                   that switch lives inside the IME itself.\n\n"
+            "Run both: disable-hotkeys once, start before you play.\n\n"
+            "Examples:\n"
+            "  devbits ime status\n"
+            "  devbits ime disable-hotkeys\n"
+            "  devbits ime start\n"
+            "  devbits ime start --apps valorant.exe,cs2.exe\n"
+            "  devbits ime start --strict     # for exclusive-fullscreen games\n"
+            "  devbits ime stop"
+        ),
+    )
+    ime_sub = p.add_subparsers(dest="action", required=True)
+
+    i = ime_sub.add_parser(
+        "status",
+        help="Show the watcher, input languages and hotkey state.",
+        description="Report whether the watcher is running, which input languages are "
+                    "installed, and which input-switching hotkeys are still live.",
+    )
+    i.add_argument("--no-color", action="store_true",
+                   help="Disable colored output (also honors NO_COLOR).")
+    i.set_defaults(func=cmd_ime_status)
+
+    i = ime_sub.add_parser(
+        "start",
+        help="Start the background watcher.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Watch the foreground window and force it back to the English keyboard\n"
+            "layout whenever something switches it. A window whose layout carries no\n"
+            "IME has no Chinese/English mode to toggle, so a stray Shift stops\n"
+            "mattering.\n\n"
+            "Only posts window messages to the game — no keyboard hook and no DLL\n"
+            "injection, so anti-cheat drivers have nothing to object to. Two things\n"
+            "follow from that:\n\n"
+            "  * A game running as Administrator can only be reached from an\n"
+            "    Administrator terminal — Windows drops messages posted from a\n"
+            "    lower integrity level. 'status' reports any window this hit.\n"
+            "  * A game in exclusive fullscreen may ignore the messages entirely.\n"
+            "    Borderless-windowed mode avoids this.\n\n"
+            "--strict covers both cases by removing the other input languages\n"
+            "outright, which no keystroke can undo; 'stop' puts them back.\n\n"
+            "Examples:\n"
+            "  devbits ime start\n"
+            "  devbits ime start --apps valorant.exe\n"
+            "  devbits ime start --strict"
+        ),
+    )
+    i.add_argument("--strict", action="store_true",
+                   help="Also drop every non-English input language until 'stop'.")
+    i.add_argument("--apps", default=None,
+                   help="Comma-separated executables to guard. Default: every window.")
+    i.add_argument("--interval", type=int, default=300,
+                   help="Milliseconds between checks. Default: 300")
+    i.add_argument("--layout", default="0409",
+                   help="Language id to force, in hex. Default: 0409 (en-US)")
+    i.set_defaults(func=cmd_ime_start)
+
+    i = ime_sub.add_parser(
+        "stop",
+        help="Stop the watcher and undo what it changed.",
+        description="Stop the background watcher. If it was started with --strict, the "
+                    "input languages it removed are restored.",
+    )
+    i.set_defaults(func=cmd_ime_stop)
+
+    i = ime_sub.add_parser(
+        "restart",
+        help="Restart the watcher, applying new options.",
+        description="Stop the watcher if it is running, then start it again with the "
+                    "options given here.",
+    )
+    i.add_argument("--strict", action="store_true",
+                   help="Also drop every non-English input language until 'stop'.")
+    i.add_argument("--apps", default=None,
+                   help="Comma-separated executables to guard. Default: every window.")
+    i.add_argument("--interval", type=int, default=300,
+                   help="Milliseconds between checks. Default: 300")
+    i.add_argument("--layout", default="0409",
+                   help="Language id to force, in hex. Default: 0409 (en-US)")
+    i.set_defaults(func=cmd_ime_restart)
+
+    i = ime_sub.add_parser(
+        "disable-hotkeys",
+        help="Turn off Alt+Shift, Ctrl+Space and the other IME hotkeys.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Disable every registry-level input-switching hotkey: Alt+Shift and\n"
+            "Ctrl+Shift for the input language, plus Ctrl+Space, Shift+Space and the\n"
+            "rest of the IME hotkeys.\n\n"
+            "The previous settings are saved first, so 'restore-hotkeys' puts them\n"
+            "back exactly. The change takes effect at your next sign-in: these\n"
+            "settings are cached by ctfmon.exe, which Windows protects from being\n"
+            "restarted. Until then, 'devbits ime start' covers the gap.\n\n"
+            "A bare Shift toggling Chinese/English is not a registry hotkey and is\n"
+            "not affected -- use 'start', or turn it off in the IME's own settings."
+        ),
+    )
+    i.set_defaults(func=cmd_ime_disable_hotkeys)
+
+    i = ime_sub.add_parser(
+        "restore-hotkeys",
+        help="Put the hotkey settings back.",
+        description="Restore the input-switching hotkeys saved by 'disable-hotkeys'. "
+                    "Takes effect at the next sign-in.",
+    )
+    i.set_defaults(func=cmd_ime_restore_hotkeys)
+
+    i = ime_sub.add_parser(
+        "restore-languages",
+        help="Recover input languages after an interrupted --strict run.",
+        description="Put back the input languages saved by the last '--strict' start. "
+                    "Only needed if the watcher was killed without running 'stop'.",
+    )
+    i.set_defaults(func=cmd_ime_restore_languages)
+
     return parser
 
 
@@ -1141,6 +1274,151 @@ def cmd_wifi_forget(args: argparse.Namespace) -> None:
 
     _run_privileged(wifi.forget, ssid, args.interface)
     print(f"Forgot {ssid}. It will no longer connect automatically.")
+
+
+# ---------------------------------------------------------------------------
+# ime
+# ---------------------------------------------------------------------------
+
+def _ime_apps(raw: str | None) -> list[str]:
+    return [a.strip() for a in (raw or "").split(",") if a.strip()]
+
+
+def _format_uptime(seconds: float) -> str:
+    total = int(seconds)
+    return f"{total // 3600:02d}:{total // 60 % 60:02d}:{total % 60:02d}"
+
+
+def _ime_signin_notice() -> None:
+    print("Takes effect at your next sign-in — ctfmon.exe caches these settings and "
+          "Windows will not let it be restarted.", file=sys.stderr)
+
+
+def cmd_ime_status(args: argparse.Namespace) -> None:
+    from . import ime
+
+    color = _use_color(False if args.no_color else None)
+    report = ime.status()
+    dot = "●" if _unicode_ok() else "*"
+
+    if report.guard is not None:
+        guard = report.guard
+        line = f"{dot} running   pid {guard.pid}   up {_format_uptime(guard.uptime)}"
+        if guard.strict:
+            line += "   [strict]"
+        print(_colorize(line, "self", color))
+        scope = ", ".join(guard.apps) if guard.apps else "every window"
+        print(_colorize(f"  guarding: {scope}", "dim", color))
+        if report.fixes:
+            detail = f"  {report.fixes} reset(s)"
+            if report.last_process:
+                detail += f", last {report.last_process} at {report.last_fix}"
+            print(_colorize(detail, "dim", color))
+        if report.blocked:
+            print(_colorize(
+                f"  could not switch: {', '.join(report.blocked)}", "warn", color))
+            print(_colorize(
+                "  Those windows run elevated, so Windows drops the watcher's "
+                "messages. Restart it from an Administrator terminal, or use "
+                "--strict.", "note", color))
+    else:
+        print(_colorize(f"{'○' if _unicode_ok() else 'o'} not running", "warn", color))
+
+    print()
+    print(_colorize("Input languages", "header", color))
+    for entry in report.languages:
+        tips = ", ".join(entry["tips"]) or "(none)"
+        print(f"  {entry['tag']:<12} {tips}")
+
+    print()
+    print(_colorize("Hotkeys", "header", color))
+    hotkeys = report.hotkeys
+    if hotkeys.toggle_disabled:
+        print(_colorize("  language / layout switch: disabled", "self", color))
+    elif hotkeys.toggle:
+        current = "  ".join(f"{k}={v}" for k, v in sorted(hotkeys.toggle.items()))
+        print(_colorize(f"  language / layout switch: enabled ({current})", "gateway", color))
+    else:
+        print(_colorize("  language / layout switch: unset, so Windows' default "
+                        "Alt+Shift still switches", "gateway", color))
+
+    if hotkeys.live:
+        unique = sorted(set(hotkeys.live))
+        print(_colorize(f"  IME hotkeys: {len(hotkeys.live)} of {hotkeys.total} live "
+                        f"({', '.join(unique)})", "gateway", color))
+    else:
+        print(_colorize(f"  IME hotkeys: all {hotkeys.total} disabled", "self", color))
+
+
+def _ime_start(args: argparse.Namespace) -> None:
+    from . import ime
+
+    state = ime.start(
+        strict=args.strict,
+        apps=_ime_apps(args.apps),
+        interval_ms=args.interval,
+        layout=int(args.layout, 16),
+    )
+    suffix = " [strict]" if state.strict else ""
+    print(f"Watcher started (pid {state.pid}){suffix}.")
+    print(f"Guarding: {', '.join(state.apps) if state.apps else 'every window'}")
+    if state.strict:
+        print("Every non-English input language is removed until 'devbits ime stop'.")
+
+
+def cmd_ime_start(args: argparse.Namespace) -> None:
+    _ime_start(args)
+
+
+def cmd_ime_stop(args: argparse.Namespace) -> None:
+    from . import ime
+
+    stopped, restored = ime.stop()
+    if stopped is None:
+        print("The watcher is not running.", file=sys.stderr)
+    else:
+        print(f"Watcher stopped (pid {stopped.pid}).")
+    if restored:
+        print(f"Input languages restored: {', '.join(restored)}")
+
+
+def cmd_ime_restart(args: argparse.Namespace) -> None:
+    from . import ime
+
+    stopped, restored = ime.stop()
+    if stopped is not None:
+        print(f"Watcher stopped (pid {stopped.pid}).")
+    if restored:
+        print(f"Input languages restored: {', '.join(restored)}")
+    _ime_start(args)
+
+
+def cmd_ime_disable_hotkeys(args: argparse.Namespace) -> None:
+    from . import ime
+
+    cleared = ime.disable_hotkeys()
+    print(f"Disabled the language / layout switch hotkeys and cleared {cleared} "
+          "IME hotkey(s), including Ctrl+Space and Shift+Space.")
+    print(f"Previous settings saved to {ime.state_dir() / 'hotkeys.json'}.")
+    _ime_signin_notice()
+    print("Until then, run 'devbits ime start'. A bare Shift toggling Chinese/English "
+          "is an IME setting, not a hotkey, so only the watcher covers it.",
+          file=sys.stderr)
+
+
+def cmd_ime_restore_hotkeys(args: argparse.Namespace) -> None:
+    from . import ime
+
+    restored = ime.restore_hotkeys()
+    print(f"Restored the language / layout switch hotkeys and {restored} IME hotkey(s).")
+    _ime_signin_notice()
+
+
+def cmd_ime_restore_languages(args: argparse.Namespace) -> None:
+    from . import ime
+
+    restored = ime.restore_languages()
+    print(f"Input languages restored: {', '.join(restored)}")
 
 
 def main(argv: list[str] | None = None) -> int:

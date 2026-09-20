@@ -94,3 +94,7 @@ def wifi() -> int:
 
 def netsurvey() -> int:
     return _run("netsurvey")
+
+
+def ime() -> int:
+    return _run("ime")

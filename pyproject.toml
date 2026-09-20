@@ -1,6 +1,6 @@
 [project]
 name = "devbits"
-version = "1.4.2"
+version = "1.5.0"
 description = "A lightweight CLI toolkit for daily development utilities."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -41,6 +41,7 @@ renamefiles = "devbits.scripts:renamefiles"
 samplefiles = "devbits.scripts:samplefiles"
 netscan = "devbits.scripts:netscan"
 netsurvey = "devbits.scripts:netsurvey"
+ime = "devbits.scripts:ime"
 wifi = "devbits.scripts:wifi"
 
 [tool.setuptools.packages.find]
