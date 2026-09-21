@@ -518,11 +518,12 @@ def disable_hotkeys() -> int:
 def restore_hotkeys() -> int:
     """Put the hotkey registry back exactly as :func:`disable_hotkeys` found it."""
     _require_windows()
-    import winreg
 
     data = _read_json(_hotkey_backup())
     if not data:
         raise ImeError(f"No hotkey backup to restore from ({_hotkey_backup()}).")
+
+    import winreg
 
     # Recreate rather than merge: the original may have had no values at all,
     # and leaving "3" behind would silently keep the hotkeys disabled.
