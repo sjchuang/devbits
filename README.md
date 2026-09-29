@@ -52,6 +52,7 @@ editvideo --help
 | `batchimages` | Batch resize or convert all images in a folder. |
 | `checkimages` | Scan for broken / corrupt image files. |
 | `contactsheet` | Generate a thumbnail grid (contact sheet) from a folder of images. |
+| `draw` | Windows Paint-style editor in the browser — start from a blank canvas or open a photo. See [Drawing](#drawing). |
 
 ### Project / Files
 
@@ -99,7 +100,10 @@ recolor logo.png
 recolor logo.png --color '#1a73e8'
 recolor logo.png --color 0,178,179
 
-# Batch resize images to 800×600
+# Open the Paint-style editor on a blank canvas, or on a photo
+draw
+draw photo.jpg
+
 batchimages ./photos -o ./resized --size 800,600
 
 # Clean Python caches
@@ -159,6 +163,37 @@ ime start --strict
 > **manufacturer** — a network scan can't read a device's CPU/RAM/OS. Phones and
 > laptops that use a randomized/private MAC show up as `(private)` and can't be
 > attributed to a vendor.
+
+### Drawing
+
+`draw` starts a local server and opens a Paint-style editor in your browser.
+With no argument you get a blank canvas (`--size W,H`, default 1280×720); give
+it an image to edit that instead. Nothing is uploaded anywhere — the page talks
+only to the devbits process on `127.0.0.1`, and closing it with Ctrl+C stops it.
+
+What it covers, following Windows Paint:
+
+| Area | Features |
+|------|----------|
+| Tools | Pencil, fill (with tolerance), text, eraser (right-drag swaps Color 1 → Color 2 only), color picker, magnifier |
+| Brushes | Brush, calligraphy ×2, airbrush, oil, crayon, marker, natural pencil, watercolor |
+| Shapes | Line, curve, oval, rectangle, rounded rectangle, polygon, triangles, diamond, pentagon, hexagon, four arrows, 4/5/6-point stars, callouts, heart, lightning — outline and fill styles, adjustable until you click away |
+| Selection | Rectangular and free-form, move / resize / Ctrl+drag to duplicate, transparent selection, cut / copy / paste (system clipboard) |
+| Image | Crop, resize and skew, rotate, flip, invert colors, canvas size (or drag the canvas edges) |
+| Colors | Color 1 / Color 2 (left / right click), Paint palette, custom colors |
+| View | Zoom (Ctrl+wheel, magnifier, slider), fit, pixel gridlines, Space+drag to pan |
+| Files | New, open, **Add photo** (drops an image onto the canvas as a movable selection — also by drag-and-drop or paste), save / save as (PNG, JPEG, BMP, GIF, WebP, TIFF, ICO, PGM, PPM), download. Opens anything Pillow reads, including 8/16-bit PGM / PPM / PBM |
+
+`Save` writes next to the opened image as `<stem>_drawn.<ext>` — the original is
+never touched unless you pick its name in *Save as* — or to `./untitled.png`
+for a blank canvas. `-o` / `--output` sets the file directly. An existing file
+is only replaced after you confirm.
+
+Shortcuts: Ctrl+Z / Ctrl+Y undo / redo, Ctrl+S save, Ctrl+Shift+S save as,
+Ctrl+O open, Ctrl+A select all, Ctrl+C / X / V clipboard, Ctrl+Shift+X crop,
+Ctrl+E canvas size, Ctrl+G gridlines, Ctrl+± / Ctrl+0 / Ctrl+1 zoom, Delete,
+Esc / Enter to finish, arrows to nudge, `[` / `]` size, `X` swap colors, and
+P / B / E / F / I / T / S / Z / U for the tools.
 
 ### Surveying a shared network
 
@@ -338,6 +373,7 @@ video2gif movie.mp4          →  movie.gif
 resizeimage photo.jpg        →  photo_resized.jpg
 recolor logo.png             →  logo_revised.png
 contactsheet ./photos        →  photos_sheet.jpg
+draw photo.jpg (Save)        →  photo_drawn.jpg
 ```
 
 ## License

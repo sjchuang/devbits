@@ -13,7 +13,7 @@ from .image import batch_images, check_images, contact_sheet, image_to_ico, reco
 from .media import clip_video, images_to_gif, images_to_video, resize_video, video_to_gif, video_to_images
 from .network import scan_network
 from .project import print_tree, rename_files, sample_files, top_sizes
-from .utils import ensure_exists
+from .utils import ensure_exists, parse_size
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +378,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--labels", action="store_true",
                    help="Print filenames below each thumbnail.")
     p.set_defaults(func=cmd_contactsheet)
+
+    # ── draw ───────────────────────────────────────────────────
+    p = sub.add_parser(
+        "draw",
+        help="Open a Paint-style drawing editor in the browser.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Open a Windows Paint-style editor in the browser: pencil, brushes,\n"
+            "shapes, text, fill, eraser, color picker, selections, crop, resize,\n"
+            "rotate / flip, zoom, and undo / redo. Start from a blank canvas or\n"
+            "an image; more photos can be added onto the canvas from the page.\n\n"
+            "Save writes next to the opened image as <stem>_drawn.<ext>, or to\n"
+            "./untitled.png for a blank canvas; --output overrides both.\n\n"
+            "Examples:\n"
+            "  devbits draw                          # blank 1280x720 canvas\n"
+            "  devbits draw --size 800,600           # blank canvas of a given size\n"
+            "  devbits draw photo.jpg                # edit a photo\n"
+            "  devbits draw photo.jpg -o edited.png"
+        ),
+    )
+    p.add_argument("image", type=Path, nargs="?", default=None,
+                   help="Image to open. Omit it to start from a blank canvas.")
+    p.add_argument("-o", "--output", type=Path, default=None,
+                   help="File that Save writes. Default: <image_stem>_drawn.<ext>, or ./untitled.png")
+    p.add_argument("--size", metavar="W,H", default="1280,720",
+                   help="Blank canvas size when no image is given. Default: 1280,720")
+    p.set_defaults(func=cmd_draw)
 
     # ── tree ───────────────────────────────────────────────────
     p = sub.add_parser(
@@ -893,6 +920,13 @@ def cmd_contactsheet(args: argparse.Namespace) -> None:
     folder = ensure_exists(args.folder)
     output = args.output or (folder.parent / f"{folder.name}_sheet.jpg")
     print(contact_sheet(folder, output, args.cols, args.thumb_size, labels=args.labels))
+
+
+def cmd_draw(args: argparse.Namespace) -> None:
+    image = ensure_exists(args.image) if args.image is not None else None
+    size = parse_size(args.size)
+    from .draw import launch_draw
+    launch_draw(image, args.output, size)
 
 
 def cmd_tree(args: argparse.Namespace) -> None:

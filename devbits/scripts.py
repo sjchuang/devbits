@@ -68,6 +68,10 @@ def contactsheet() -> int:
     return _run("contactsheet")
 
 
+def draw() -> int:
+    return _run("draw")
+
+
 def tree() -> int:
     return _run("tree")
 
